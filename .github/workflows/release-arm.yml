@@ -1,0 +1,48 @@
+name: Release ARM binaries
+
+# Builds the aarch64 and armv7hf binaries the Axis_Cam_go2rtc ACAP wrapper
+# expects, and publishes them to a rolling "hksv-latest" release so the
+# ACAP's Dockerfile can point at a stable URL that never needs a version
+# bump - only the binaries change.
+on:
+  push:
+    branches: [hksv]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build aarch64
+        env: { GOOS: linux, GOARCH: arm64, CGO_ENABLED: "0" }
+        run: go build -trimpath -ldflags="-s -w" -o go2rtc_linux_arm64 .
+
+      - name: Build armv7hf
+        env: { GOOS: linux, GOARCH: arm, GOARM: "7", CGO_ENABLED: "0" }
+        run: go build -trimpath -ldflags="-s -w" -o go2rtc_linux_arm .
+
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=hksv-latest
+          SHA=$(git rev-parse --short HEAD)
+          NOTES="Built from ${{ github.repository }}@${SHA} ($(date -u +%Y-%m-%dT%H:%M:%SZ)).
+
+          go2rtc_linux_arm64 - aarch64 (Axis ACAP: architecture aarch64)
+          go2rtc_linux_arm   - armv7hf, GOARM=7 (Axis ACAP: architecture armv7hf)"
+
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --title "hksv (latest: ${SHA})" \
+            --notes "$NOTES" \
+            go2rtc_linux_arm64 go2rtc_linux_arm
