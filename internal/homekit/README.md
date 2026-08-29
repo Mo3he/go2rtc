@@ -253,6 +253,61 @@ else may still get rejected here with a SOAP `NotAuthorized` fault. Also
 requires an `http://` ONVIF service - an HTTPS-only camera web interface isn't
 supported by the ONVIF client yet.
 
+**The ONVIF port is often not 80.** It is not discoverable from an RTSP URL, so
+`onvif_url` usually has to name it explicitly. Ports seen in practice: Axis on
+80, TP-Link Tapo on **2020** (80 is closed entirely), Reolink on **8000**.
+Auto-discovery only finds a URL if one of the stream's sources is itself an
+`onvif://` URL, so a stream built from `rtsp://` or `ffmpeg:` needs
+`onvif_url` set or the watcher never starts.
+
+**Using the camera's own analytics instead of plain motion**
+
+By default the accessory listens for the standard ONVIF motion topics. A
+camera that runs its own analytics usually reports them under a vendor topic,
+which is both more accurate and less noisy than a raw pixel-change alarm.
+`onvif_topic` selects one, as a case-insensitive substring of the event topic:
+
+```yaml
+homekit:
+  driveway:
+    hksv: true
+    motion: onvif
+    onvif_url: onvif://user:pass@192.168.1.123
+    onvif_topic: ObjectAnalytics/Device1Scenario1  # AXIS Object Analytics
+```
+
+On an Axis running AXIS Object Analytics, `Device1Scenario1` is the first
+configured scenario and `Device1ScenarioANY` fires for any of them. Scoping the
+scenario to people or vehicles is done in the camera's own AOA configuration,
+so HomeKit only sees the events you care about. A camera typically emits a
+great deal besides motion (one tested Axis sent 137 events in 75 seconds, all
+but 3 of them PTZ and hardware status), and the topic filter discards the rest.
+
+Reolink models with AI detection expose a topic per class, so the trigger can
+be narrowed to exactly one without touching the camera's configuration:
+
+```yaml
+    onvif_topic: MyRuleDetector/PeopleDetect  # or VehicleDetect, DogCatDetect,
+                                              # Package, FaceDetect, Visitor
+```
+
+**Finding a camera's topics: watch it, do not ask it.** Set `log: onvif:
+trace` and read the `[onvif] parse: topic` lines, which print every topic
+received. Do *not* rely on the topic list the camera advertises through
+`GetEventProperties`: a tested Reolink advertises five topics while actually
+emitting eight, hiding every one of its AI detectors, and still sets
+`FixedTopicSet` to `true` claiming the list is complete. Subscribing without
+a topic filter for a minute shows the truth, including the initial property
+state most cameras send on subscribe.
+
+`onvif_items` overrides which `SimpleItem` carries the state. The defaults
+(`IsMotion`, `State`, `active`) cover every camera tested, including Axis
+application topics, so this is rarely needed:
+
+```yaml
+    onvif_items: [MyCustomState]
+```
+
 **Motion API:**
 
 ```bash
