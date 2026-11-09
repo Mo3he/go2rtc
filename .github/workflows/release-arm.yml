@@ -18,9 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Latest Go release, so standard library security fixes reach the
+      # binaries without editing this file.
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: stable
+          check-latest: true
 
       - name: Build aarch64
         env: { GOOS: linux, GOARCH: arm64, CGO_ENABLED: "0" }
